@@ -7,8 +7,8 @@
 	wt_linear_block_t linear_weights_pong[ceildiv(MAX_LINEAR_DIM_PRODUCT, LINEAR_IN_SIZE * LINEAR_OUT_SIZE)];
 	wt_bias_block_t linear_bias_pong[ceildiv(MAX_LINEAR_OUT_DIM, LINEAR_OUT_SIZE)];
 
-    wt_linear_block_t linear_weights_attn[NUM_ATTN_LINEAR][ceildiv(QKV_LINEAR_DIM_PRODUCT, LINEAR_IN_SIZE *LINEAR_OUT_SIZE)];
-    wt_bias_block_t linear_bias_attn[NUM_ATTN_LINEAR][ceildiv(FEATURE_DIM, LINEAR_OUT_SIZE)];
+    wt_linear_block_t linear_weights_attn[4][ceildiv(QKV_LINEAR_DIM_PRODUCT, LINEAR_IN_SIZE *LINEAR_OUT_SIZE)];
+    wt_bias_block_t linear_bias_attn[4][ceildiv(FEATURE_DIM, LINEAR_OUT_SIZE)];
 
 
 void load_linear_weights(
@@ -332,8 +332,8 @@ void compute_linear_single(
     #pragma HLS inline off
     #pragma HLS dataflow
 
-    hls::stream<linear_in_parallel_t> in_stream;
-    hls::stream<linear_out_parallel_t> out_stream;
+    hls::stream<linear_in_t> in_stream;
+    hls::stream<linear_out_t> out_stream;
     read_in_stream_direct(in_stream, src, in_dim);
     compute_linear_on_stream_single(out_stream, in_stream, weights, bias, out_dim, in_dim, NUM_PATCHES);
     write_out_stream_direct(dst, out_stream, out_dim);
@@ -345,22 +345,20 @@ void read_in_RR(
     const fm_block_t src[],
     unsigned int in_dim,
     unsigned int expert,
-	unsigned int length)
+	unsigned int length,
+	bool use_expert)
 {
 #pragma HLS inline off
 
     static_assert(LINEAR_IN_SIZE % FEATURE_BLOCK_SIZE == 0, "LINEAR_IN_SIZE must be a multiple of FEATURE_BLOCK_SIZE");
 
     constexpr unsigned int num_blocks = LINEAR_IN_SIZE / FEATURE_BLOCK_SIZE;
-    unsigned int num_dim_blocks = ceildiv(in_dim, FEATURE_BLOCK_SIZE);
+    unsigned int row_length = ceildiv(in_dim, FEATURE_BLOCK_SIZE);
     fm_block_t blocks[NUM_PE][num_blocks];
     unsigned int address[NUM_PE];
+    linear_in_parallel_t stream_block;
 
 #pragma HLS array_partition variable = blocks complete
-
-    unsigned int row_length = ceildiv(in_dim, FEATURE_BLOCK_SIZE);
-    unsigned int iters = length * row_length;
-    bool use_expert = (length != NUM_PATCHES);
 
     constexpr unsigned int last_block = num_blocks - 1;
     constexpr unsigned int last_idx = NUM_PE - 1;
@@ -369,6 +367,7 @@ void read_in_RR(
     unsigned int next_patch_base = 0;
     unsigned int next_dim_block = 0;
 
+    unsigned int iters = length * row_length;
     FOR_EACH(i, iters)
     {
 #pragma HLS pipeline
@@ -379,10 +378,10 @@ void read_in_RR(
         next_block = (idx != last_idx) ? block : (block == last_block) ? 0 : block + 1;
 
         unsigned int dim_block = next_dim_block;
-        next_dim_block = (idx != last_idx) ? dim_block : (dim_block == num_dim_blocks - 1) ? 0 : dim_block + 1;
+        next_dim_block = (idx != last_idx) ? dim_block : (dim_block == row_length - 1) ? 0 : dim_block + 1;
 
         unsigned int patch_base = next_patch_base;
-        next_patch_base = (idx != last_idx) ? patch_base : (dim_block == num_dim_blocks - 1) ? patch_base + NUM_PE : patch_base;
+        next_patch_base = (idx != last_idx) ? patch_base : (dim_block == row_length - 1) ? patch_base + NUM_PE : patch_base;
 
         unsigned int patch = patch_base + idx;
 
@@ -415,7 +414,6 @@ void read_in_RR(
         if (block == last_block)
             {
 // #pragma HLS occurrence cycle = num_blocks
-            linear_in_parallel_t stream_block;
             FOR_BLOCK(j, LINEAR_IN_SIZE, FEATURE_BLOCK_SIZE)
             {
                 FOR_OFFSET_NOCHK(j)
@@ -446,6 +444,7 @@ void compute_linear_on_stream_parallel(
 
     linear_in_parallel_t in_blocks[ceildiv(MAX_LINEAR_IN_DIM, LINEAR_IN_SIZE)];
     linear_out_parallel_t out_block;
+    linear_in_t in_block[NUM_PE];
 
     unsigned int out_dim_iters = ceildiv(out_dim, LINEAR_OUT_SIZE);
     unsigned int last_out_dim_iter = out_dim_iters - 1;
@@ -476,7 +475,7 @@ void compute_linear_on_stream_parallel(
         {
             in_stream >> in_blocks[in_dim_block];
         }
-        linear_in_t in_block[NUM_PE];
+
 
         FOR_EACH(idx, NUM_PE)
         {
@@ -550,7 +549,6 @@ void write_out_RR(
     constexpr unsigned int last_idx = NUM_PE - 1;
     unsigned int next_block = 0;
     unsigned int next_idx = 0;
-    unsigned int next_patch_base = 0;
     unsigned int next_dim_block = 0;
 
 
@@ -568,14 +566,21 @@ void write_out_RR(
         unsigned int dim_block = next_dim_block;
         next_dim_block = (idx != last_idx) ? dim_block : (dim_block == row_length - 1) ? 0 : dim_block + 1;
 
-        unsigned int patch_idx = patch_base + idx;
+        if(dim_block == 0)
+        {
+        	unsigned int dst_idx;
+            index_stream >> dst_idx;
+            address[idx] = dst_idx * row_length;
+            if(use_score & dst_idx != NUM_PATCHES + 1)
+            	score[idx] = expert_scores[expert][dst_idx];
+        }
 
         if (block == 0)
         {
-#pragma HLS occurrence cycle = num_blocks
 
             linear_out_parallel_t stream_block;
-            out_stream >> stream_block;
+            if(idx == 0)
+            	out_stream >> stream_block;
             FOR_BLOCK(j, LINEAR_OUT_SIZE, FEATURE_BLOCK_SIZE)
             {
                 fm_block_t slice;
@@ -587,13 +592,6 @@ void write_out_RR(
             }
         }
 
-        if(dim_block == 0)
-        {
-        	unsigned int dst_idx;
-            index_stream >> dst_idx;
-            address[idx] = dst_idx * row_length;
-            score[idx] =(dst_idx != NUM_PATCHES + 1) ? expert_scores[expert][dst_idx] : 0;
-        }
         //write index is equal to read index in RR
         if (address[idx] != overflow_idx)
         {
@@ -603,7 +601,7 @@ void write_out_RR(
                 block_out *= score[idx];
                 block_out += dst[address[idx] + dim_block];
             }
-            dst[address[idx] + dim_block] = blocks[idx][block];
+            dst[address[idx] + dim_block] = block_out;
         }
     }
 }
@@ -632,266 +630,11 @@ void compute_linear(
 	#pragma HLS stream variable=index_stream depth= 2 * NUM_PE
 
     unsigned int length = (use_expert) ? expert_queue_lens[expert] : NUM_PATCHES;
-    read_in_RR(in_stream, index_stream, src, in_dim, expert, length);
+    read_in_RR(in_stream, index_stream, src, in_dim, expert, length,use_expert);
     compute_linear_on_stream_parallel(out_stream, in_stream, weights, bias, out_dim, in_dim, length, use_gelu);
     write_out_RR(dst, out_stream, index_stream, out_dim, expert, length, use_score);
 }
 
-//void read_in_stream_indirect(
-//    hls::stream<linear_in_t>& in_stream,
-//    hls::stream<unsigned int>& index_stream,
-//    const fm_block_t src[],
-//    unsigned int in_dim,
-//    unsigned int expert,
-//    unsigned int length
-//)
-//{
-//    #pragma HLS inline off
-//
-//    static_assert(LINEAR_IN_SIZE % FEATURE_BLOCK_SIZE == 0, "LINEAR_IN_SIZE must be a multiple of FEATURE_BLOCK_SIZE");
-//
-//    constexpr unsigned int num_blocks = LINEAR_IN_SIZE / FEATURE_BLOCK_SIZE;
-//    unsigned int num_dim_blocks = ceildiv(in_dim, FEATURE_BLOCK_SIZE);
-//    fm_block_t blocks[num_blocks];
-//    #pragma HLS array_partition variable=blocks complete
-//
-//    constexpr unsigned int last_block = num_blocks - 1;
-//    unsigned int last_dim_block = num_dim_blocks - 1;
-//    unsigned int next_block = 0;
-//    unsigned int next_patch_idx = 0;
-//    unsigned int next_dim_block = 0;
-//    unsigned int src_base = 0;
-//
-//    unsigned int iters = length * num_dim_blocks;
-//
-//    FOR_EACH(i, iters)
-//    {
-//        #pragma HLS pipeline
-//
-//        unsigned int block = next_block;
-//        next_block = (block == last_block) ? 0 : block + 1;
-//        unsigned int dim_block = next_dim_block;
-//        next_dim_block = (dim_block == last_dim_block) ? 0 : dim_block + 1;
-//        unsigned int patch_idx = next_patch_idx;
-//        next_patch_idx = (dim_block == last_dim_block) ? patch_idx + 1 : patch_idx;
-//
-//        if (dim_block == 0)
-//        {
-//            unsigned int patch = expert_queues[expert][patch_idx];
-//            src_base = patch * num_dim_blocks;
-//            index_stream << patch;
-//        }
-//
-//        blocks[block] = src[src_base + dim_block];
-//
-//        if (block == last_block)
-//        {
-//            #pragma HLS occurrence cycle=num_blocks
-//
-//            linear_in_t stream_block;
-//            FOR_BLOCK(j, LINEAR_IN_SIZE, FEATURE_BLOCK_SIZE)
-//            {
-//                FOR_OFFSET_NOCHK(j)
-//                {
-//                    stream_block[j] = blocks[j_block][j_offset];
-//                }
-//            }
-//            in_stream << stream_block;
-//        }
-//    }
-//}
-
-//void write_out_stream_indirect(
-//    fm_block_t dst[],
-//    hls::stream<linear_out_t>& out_stream,
-//    hls::stream<unsigned int>& index_stream,
-//    unsigned int out_dim,
-//    unsigned int expert,
-//    unsigned int length,
-//    bool use_score
-//)
-//{
-//    #pragma HLS inline off
-//
-//    static_assert(LINEAR_OUT_SIZE % FEATURE_BLOCK_SIZE == 0, "LINEAR_OUT_SIZE must be a multiple of FEATURE_BLOCK_SIZE");
-//
-//    constexpr unsigned int num_blocks = LINEAR_OUT_SIZE / FEATURE_BLOCK_SIZE;
-//    unsigned int num_dim_blocks = ceildiv(out_dim, FEATURE_BLOCK_SIZE);
-//    fm_block_t blocks[num_blocks];
-//    #pragma HLS array_partition variable=blocks complete
-//    fm_t score;
-//
-//    constexpr unsigned int last_block = num_blocks - 1;
-//    unsigned int last_dim_block = num_dim_blocks - 1;
-//    unsigned int next_block = 0;
-//    unsigned int next_patch_idx = 0;
-//    unsigned int next_dim_block = 0;
-//    unsigned int dst_base = 0;
-//
-//    unsigned int iters = length * num_dim_blocks;
-//
-//    FOR_EACH(i, iters)
-//    {
-//        #pragma HLS pipeline
-//        #pragma HLS dependence variable=dst inter false
-//
-//        unsigned int block = next_block;
-//        next_block = (block == last_block) ? 0 : block + 1;
-//        unsigned int dim_block = next_dim_block;
-//        next_dim_block = (dim_block == last_dim_block) ? 0 : dim_block + 1;
-//        unsigned int patch_idx = next_patch_idx;
-//        next_patch_idx = (dim_block == last_dim_block) ? patch_idx + 1 : patch_idx;
-//
-//        if (dim_block == 0)
-//        {
-//            unsigned int patch;
-//            index_stream >> patch;
-//            dst_base = patch * num_dim_blocks;
-//            score = expert_scores[expert][patch_idx];
-//        }
-//
-//        if (block == 0)
-//        {
-//            #pragma HLS occurrence cycle=num_blocks
-//
-//            linear_out_t stream_block;
-//            out_stream >> stream_block;
-//            FOR_BLOCK(j, LINEAR_OUT_SIZE, FEATURE_BLOCK_SIZE)
-//            {
-//                fm_block_t slice;
-//                FOR_OFFSET_NOCHK(j)
-//                {
-//                    slice[j_offset] = stream_block[j];
-//                }
-//                blocks[j_block] = slice;
-//            }
-//        }
-//
-//        unsigned int dst_idx = dst_base + dim_block;
-//        fm_block_t block_out = blocks[block];
-//        if (use_score)
-//        {
-//            block_out *= score;
-//            block_out += dst[dst_idx];
-//        }
-//        dst[dst_idx] = block_out;
-//    }
-//}
-
-//void read_in_stream(
-//    hls::stream<linear_in_t>& in_stream,
-//    hls::stream<unsigned int>& index_stream,
-//    const fm_block_t src[],
-//    unsigned int in_dim,
-//    unsigned int expert,
-//    unsigned int length
-//)
-//{
-//#pragma HLS inline off
-//    if (length == NUM_PATCHES)
-//    {
-//        read_in_stream_direct(in_stream, src, in_dim);
-//    }
-//    else
-//    {
-//        read_in_stream_indirect(in_stream, index_stream, src, in_dim, expert, length);
-//    }
-//}
-//
-//void write_out_stream(
-//    fm_block_t dst[],
-//    hls::stream<linear_out_t>& out_stream,
-//    hls::stream<unsigned int>& index_stream,
-//    unsigned int out_dim,
-//    unsigned int expert,
-//    unsigned int length,
-//    bool use_score
-//)
-//{
-//#pragma HLS inline off
-//    if (!use_score && length == NUM_PATCHES)
-//    {
-//        write_out_stream_direct(dst, out_stream, out_dim);
-//    }
-//    else
-//    {
-//        write_out_stream_indirect(dst, out_stream, index_stream, out_dim, expert, length, use_score);
-//    }
-//}
-
-//void compute_linear_on_stream(
-//    hls::stream<linear_out_t>& out_stream,
-//    hls::stream<linear_in_t>& in_stream,
-//    const wt_linear_block_t weights[],
-//    const wt_bias_block_t bias[],
-//    unsigned int out_dim,
-//    unsigned int in_dim,
-//    unsigned int length,
-//    bool use_gelu
-//)
-//{
-//    #pragma HLS inline off
-//
-//    #pragma HLS aggregate variable=weights
-//    #pragma HLS aggregate variable=bias
-//
-//    linear_in_t in_blocks[ceildiv(MAX_LINEAR_IN_DIM, LINEAR_IN_SIZE)];
-//    linear_out_t out_block;
-//
-//    unsigned int out_dim_iters = ceildiv(out_dim, LINEAR_OUT_SIZE);
-//    unsigned int last_out_dim_iter = out_dim_iters - 1;
-//    unsigned int in_dim_iters = ceildiv(in_dim, LINEAR_IN_SIZE);
-//    unsigned int last_in_dim_iter = in_dim_iters - 1;
-//    unsigned int total_dim_iters = out_dim_iters * in_dim_iters;
-//    unsigned int last_total_dim_iter = total_dim_iters - 1;
-//    unsigned int iters = length * total_dim_iters;
-//
-//    unsigned int next_total_dim_block = 0;
-//    unsigned int next_in_dim_block = 0;
-//    unsigned int next_out_dim_block = 0;
-//
-//    FOR_EACH(i, iters)
-//    {
-//        #pragma HLS pipeline
-//
-//        unsigned int total_dim_block = next_total_dim_block;
-//        next_total_dim_block = (total_dim_block == last_total_dim_iter) ? 0 : total_dim_block + 1;
-//        unsigned int in_dim_block = next_in_dim_block;
-//        next_in_dim_block = (in_dim_block == last_in_dim_iter) ? 0 : in_dim_block + 1;
-//        unsigned int out_dim_block = next_out_dim_block;
-//        next_out_dim_block = (total_dim_block == last_total_dim_iter) ? 0 : (in_dim_block == last_in_dim_iter) ? out_dim_block + 1 : out_dim_block;
-//
-//        if (out_dim_block == 0)
-//        {
-//            in_stream >> in_blocks[in_dim_block];
-//        }
-//        linear_in_t in_block = in_blocks[in_dim_block];
-//
-//        if (in_dim_block == 0)
-//        {
-//            wt_bias_block_t bias_block = bias[out_dim_block];
-//            FOR_EACH(out_dim_offset, LINEAR_OUT_SIZE)
-//            {
-//                out_block[out_dim_offset] = bias_block[out_dim_offset];
-//            }
-//        }
-//
-//        FOR_EACH(in_dim_offset, LINEAR_IN_SIZE)
-//        {
-//            linear_out_t addend;
-//            FOR_EACH(out_dim_offset, LINEAR_OUT_SIZE)
-//            {
-//                addend[out_dim_offset] = in_block[in_dim_offset] * weights[total_dim_block][out_dim_offset][in_dim_offset];
-//            }
-//            out_block += addend;
-//        }
-//
-//        if (in_dim_block == last_in_dim_iter)
-//        {
-//            out_stream << ((use_gelu) ? gelu(out_block) : out_block);
-//        }
-//    }
-//}
 
 
 

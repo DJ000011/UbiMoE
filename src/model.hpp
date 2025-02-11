@@ -5,9 +5,9 @@ constexpr unsigned int INPUT_CHANNELS = 3;
 constexpr unsigned int INPUT_WIDTH = 256;
 constexpr unsigned int INPUT_HEIGHT = 128;
 
-constexpr unsigned int FEATURE_DIM = 192*2;
-constexpr unsigned int VIT_HIDDEN_DIM = 768*2;
-constexpr unsigned int EXPERT_HIDDEN_DIM = 384*2;
+constexpr unsigned int FEATURE_DIM = 192;
+constexpr unsigned int VIT_HIDDEN_DIM = 768;
+constexpr unsigned int EXPERT_HIDDEN_DIM = 384;
 
 constexpr unsigned int PATCH_WIDTH = 16;
 constexpr unsigned int PATCH_HEIGHT = 16;

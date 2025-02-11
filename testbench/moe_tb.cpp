@@ -75,6 +75,7 @@ int main(int argc, char** argv) {
     cl_int err;
     cl::Context context;
     cl::CommandQueue q;
+    cl::Kernel embed;
     cl::Kernel Vit_compute;
     cl::Kernel fc;
     std::string binaryFile = argv[1];
@@ -466,15 +467,15 @@ int main(int argc, char** argv) {
     OCL_CHECK(err, err = embed.setArg(5, pos_embedBuffer));
 
     OCL_CHECK(err, err = Vit_compute.setArg(0, 1));
-    OCL_CHECK(err, err = Vit_compute.setArg(2, 0));
-    OCL_CHECK(err, err = Vit_compute.setArg(3, finalBuffer));
+    OCL_CHECK(err, err = Vit_compute.setArg(1, 0));
+    OCL_CHECK(err, err = Vit_compute.setArg(2, finalBuffer));
 
-    OCL_CHECK(err, err = Vit_compute.setArg(4, attn_weightsBuffer));
-    OCL_CHECK(err, err = Vit_compute.setArg(5, attn_biasBuffer));
-    OCL_CHECK(err, err = Vit_compute.setArg(6, norm_weightsBuffer));
-    OCL_CHECK(err, err = Vit_compute.setArg(7, norm_biasBuffer));
+    OCL_CHECK(err, err = Vit_compute.setArg(3, attn_weightsBuffer));
+    OCL_CHECK(err, err = Vit_compute.setArg(4, attn_biasBuffer));
+    OCL_CHECK(err, err = Vit_compute.setArg(5, norm_weightsBuffer));
+    OCL_CHECK(err, err = Vit_compute.setArg(6, norm_biasBuffer));
 
-    OCL_CHECK(err, err = Vit_compute.setArg(8, x_norm2Buffer));
+    OCL_CHECK(err, err = Vit_compute.setArg(7, x_norm2Buffer));
 
 
     OCL_CHECK(err,err = fc.setArg(0,1));
