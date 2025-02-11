@@ -1,7 +1,6 @@
 #ifndef __UTIL_HPP__
 #define __UTIL_HPP__
-#include <gmp.h>
-#define __gmp_const const
+
 #include "hls_math.h"
 
 #define _LABEL_FOR_EACH_HELPER(line, var) _ln ## line ## _for_each_ ## var

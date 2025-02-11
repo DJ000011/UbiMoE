@@ -1,7 +1,6 @@
 #ifndef __GELU_HPP__
 #define __GELU_HPP__
-#include <gmp.h>
-#define __gmp_const const
+
 #include "dcl.hpp"
 
 fm_t gelu(fm_t x);

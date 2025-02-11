@@ -3,19 +3,6 @@
 #include "conv.hpp"
 #include "kernel.hpp"
 
-
-// void compute_subtract(patch_blocks_t x, patch_blocks_t y, fm_t out) {
-// #pragma HLS inline off
-
-// 	fm_block_t* x_blocks = reinterpret_cast<fm_block_t*>(x);
-// 	fm_block_t* y_blocks = reinterpret_cast<fm_block_t*>(y);
-// 	fm_block_t* out_blocks = reinterpret_cast<fm_block_t*>(out);
-
-// 	FOR_EACH(i, NUM_PATCHES * NUM_FEATURE_BLOCKS){
-// 	out += x_blocks[i] - y_blocks[i];
-// }
-// }
-
 extern "C" {
 void ViT_compute(
     unsigned int num_images,
@@ -47,7 +34,6 @@ void ViT_compute(
            load_linear_weights(linear_weights_attn[i], reinterpret_cast<wt_linear_t*>(attn_weights[layer][i]), FEATURE_DIM, FEATURE_DIM);
            load_linear_bias(linear_bias_attn[i], reinterpret_cast<wt_attn_bias_t*>(attn_bias[layer][i]), FEATURE_DIM);
     	}
-
 
         FOR_EACH(image, num_images)
         {

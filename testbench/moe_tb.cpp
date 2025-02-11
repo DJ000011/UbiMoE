@@ -33,8 +33,6 @@ using std::left;
 using std::setprecision;
 using std::setw;
 
-unsigned int dataSize = 1024 * 1024;
-
 unsigned int num_images = 1;
 bool reload_one_time_weights = true;
 image_t images[1];
@@ -42,8 +40,9 @@ patch_blocks_t x[1];
 patch_blocks_t x_norm2[1];
 patch_blocks_t final[1];
 patch_blocks_t input[1];
-// qxk_out_t attn;
-// softmax_info_t attn_softmax_info;
+patch_blocks_t reference_x[1];
+//patch_heads_t result;
+
 wt_patch_embed_t patch_embed_weights_in[FEATURE_DIM][INPUT_CHANNELS][PATCH_HEIGHT][PATCH_WIDTH];
 wt_bias_t patch_embed_bias_in[FEATURE_DIM];
 patch_blocks_t pos_embed;
@@ -60,10 +59,10 @@ wt_linear_t vit_weights_l2[max((NUM_LAYERS + 1) / 2, 1U)][FEATURE_DIM][VIT_HIDDE
 wt_bias_t vit_bias_l2[max((NUM_LAYERS + 1) / 2, 1U)][FEATURE_DIM];
 wt_norm_t norm_weights[NUM_LAYERS][NUM_LAYER_NORMS][FEATURE_DIM];
 wt_bias_t norm_bias[NUM_LAYERS][NUM_LAYER_NORMS][FEATURE_DIM];
-patch_heads_t result;
 
 
-patch_blocks_t reference_x[1];
+
+
 
 
 int main(int argc, char** argv) {
@@ -114,6 +113,7 @@ int main(int argc, char** argv) {
     }
 
     cout << "Loading inputs... " << flush;
+    {
   /*{
     	string filename = "/home/dongjl/weights/tmp1.bin";
     	            ifstream ifs(filename, std::ios::binary);
@@ -409,14 +409,13 @@ int main(int argc, char** argv) {
                 return 1;
             }
         }
-        cout << "done!" << endl;
-        cout << "Running kernel... " << flush;
+    }
+    cout << "done!" << endl;
+        
+    cout << "Creating buffers... " << flush;
+    {
 
-   cout << endl;
-
-
-
-   OCL_CHECK(err, cl::Buffer imagesBuffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(image_t)*num_images, &images, &err));
+    OCL_CHECK(err, cl::Buffer imagesBuffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(image_t)*num_images, &images, &err));
    
     OCL_CHECK(err, cl::Buffer x_norm2Buffer(context,  CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE, sizeof(patch_blocks_t)*num_images, &x_norm2, &err));
   
@@ -453,12 +452,12 @@ int main(int argc, char** argv) {
     OCL_CHECK(err, cl::Buffer moe_bias_l1Buffer(context,  CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(wt_bias_t) * max(NUM_LAYERS / 2, 1U) * NUM_EXPERTS * EXPERT_HIDDEN_DIM, &moe_bias_l1, &err));
 
     OCL_CHECK(err, cl::Buffer moe_bias_l2Buffer(context,  CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, sizeof(wt_bias_t) * max(NUM_LAYERS / 2, 1U) * NUM_EXPERTS * FEATURE_DIM, &moe_bias_l2, &err));
-
-
-
-
+        
+    }
+    cout << "done!" << endl;
 
     cout<< "start setarg"<< endl;
+    {
     OCL_CHECK(err, err = embed.setArg(0, 1));
     OCL_CHECK(err, err = embed.setArg(1, imagesBuffer));
     OCL_CHECK(err, err = embed.setArg(2, finalBuffer));
@@ -469,14 +468,11 @@ int main(int argc, char** argv) {
     OCL_CHECK(err, err = Vit_compute.setArg(0, 1));
     OCL_CHECK(err, err = Vit_compute.setArg(1, 0));
     OCL_CHECK(err, err = Vit_compute.setArg(2, finalBuffer));
-
     OCL_CHECK(err, err = Vit_compute.setArg(3, attn_weightsBuffer));
     OCL_CHECK(err, err = Vit_compute.setArg(4, attn_biasBuffer));
     OCL_CHECK(err, err = Vit_compute.setArg(5, norm_weightsBuffer));
     OCL_CHECK(err, err = Vit_compute.setArg(6, norm_biasBuffer));
-
     OCL_CHECK(err, err = Vit_compute.setArg(7, x_norm2Buffer));
-
 
     OCL_CHECK(err,err = fc.setArg(0,1));
     OCL_CHECK(err,err = fc.setArg(1,0));//layer
@@ -493,21 +489,22 @@ int main(int argc, char** argv) {
     OCL_CHECK(err,err = fc.setArg(12,moe_bias_l2Buffer));
     OCL_CHECK(err, err = fc.setArg(13, norm_weightsBuffer));
     OCL_CHECK(err, err = fc.setArg(14, norm_biasBuffer));
-
+    }
+    cout << "done!" << endl;
 
  //   double kernel_time_in_sec = 0, result = 0;
 
 //    std::chrono::duration<double> kernel_time(0);
 
 //    auto kernel_start = std::chrono::high_resolution_clock::now();
-    cout<<"start run"<<endl;
+    
     OCL_CHECK(err,err = q.enqueueMigrateMemObjects({imagesBuffer,patch_embed_weights_inBuffer, patch_embed_bias_inBuffer, pos_embedBuffer, attn_weightsBuffer, attn_biasBuffer }, 0 /* 0 means from host*/));
 
     OCL_CHECK(err,err = q.enqueueMigrateMemObjects({norm_weightsBuffer, norm_biasBuffer,vit_weights_l1Buffer,vit_bias_l1Buffer,vit_weights_l2Buffer,vit_bias_l2Buffer,moe_w_gateBuffer,moe_weights_l1Buffer,moe_weights_l2Buffer,moe_bias_l1Buffer,moe_bias_l2Buffer}, 0 /* 0 means from host*/));
 
     q.finish();
-
- //   std::vector<cl::Event> events(NUM_LAYERS);
+    
+    cout<<"start running"<<endl;
 
     OCL_CHECK(err,err = q.enqueueTask(embed));
 
@@ -548,7 +545,6 @@ int main(int argc, char** argv) {
         q.finish();
     //   OCL_CHECK(err,err = q.enqueueMigrateMemObjects({finalBuffer}, CL_MIGRATE_MEM_OBJECT_HOST) );
     //   q.finish();
-    //   OCL_CHECK(err, err = q.enqueueCopyBuffer(finalBuffer,xBuffer,0,0,sizeof(patch_blocks_t)*num_images));
     //   OCL_CHECK(err,err = q.enqueueMigrateMemObjects({xBuffer}, 0) );
         // cout << "layer " << layer << "part2 done" << endl;
         // {
@@ -579,7 +575,6 @@ int main(int argc, char** argv) {
     OCL_CHECK(err,err = q.enqueueMigrateMemObjects({finalBuffer}, CL_MIGRATE_MEM_OBJECT_HOST) );
     q.finish();
 
-
     // cout << "storing x_norm2 to tmp1.bin for testing"<< endl;
     // string filename = "/home/dongjl/weights/tmp1.bin";
     // ofstream ofs(filename, std::ios::binary);
@@ -588,14 +583,6 @@ int main(int argc, char** argv) {
     // 	 cerr << "Error writing " << filename << endl;
     // 	 return 1;
     // }
-
-// cout <<"max in subtract is"<< endl;
-// FOR_EACH(patch,NUM_PATCHES){
-// 	FOR_EACH(head,NUM_HEADS){
-// 		double tmp = result[patch][head].to_double();
-//      if (tmp >= 0.01) cout << tmp << endl;
-// 	}
-// }
 
     cout << "Sample of values from x vs. " << reference_var_name << ":" << endl;
         {
@@ -647,9 +634,6 @@ int main(int argc, char** argv) {
                     double computed = final[0][patch][dim_block][dim_offset].to_double();
                     double actual = reference_x[0][patch][dim_block][dim_offset].to_double();
                     double error = actual - computed;
-                    //double error = computed;
-
-
                     double abs_error = (error < 0.0) ? -error : error;
                     mse += error * error;
                     mae += abs_error;

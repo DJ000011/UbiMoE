@@ -1,7 +1,6 @@
 #ifndef __LOAD_UTIL_HPP__
 #define __LOAD_UTIL_HPP__
-#include <gmp.h>
-#define __gmp_const const
+
 #include <istream>
 #include <ostream>
 #include <ap_fixed.h>

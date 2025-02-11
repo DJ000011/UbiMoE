@@ -1,7 +1,6 @@
 #ifndef __CONV_HPP__
 #define __CONV_HPP__
-#include <gmp.h>
-#define __gmp_const const
+
 #include "dcl.hpp"
 
 extern wt_patch_embed_t patch_embed_weights[FEATURE_DIM][INPUT_CHANNELS][PATCH_HEIGHT][PATCH_WIDTH];
