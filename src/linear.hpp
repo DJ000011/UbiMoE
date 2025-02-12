@@ -4,6 +4,14 @@
 #include "dcl.hpp"
 #include "hls_stream.h"
 
+enum AttentionLinear {
+    ATTN_Q = 0,
+    ATTN_K = 1,
+    ATTN_V = 2,
+    ATTN_PROJ = 3,
+    NUM_ATTN_LINEAR
+};
+
 constexpr unsigned int MAX_LINEAR_IN_DIM = VIT_HIDDEN_DIM;
 constexpr unsigned int MAX_LINEAR_OUT_DIM = VIT_HIDDEN_DIM;
 constexpr unsigned int MAX_LINEAR_DIM_PRODUCT = VIT_HIDDEN_DIM * FEATURE_DIM;
@@ -17,8 +25,8 @@ extern wt_bias_block_t linear_bias_ping[ceildiv(MAX_LINEAR_OUT_DIM, LINEAR_OUT_S
 extern wt_linear_block_t linear_weights_pong[ceildiv(MAX_LINEAR_DIM_PRODUCT, LINEAR_IN_SIZE * LINEAR_OUT_SIZE)];
 extern wt_bias_block_t linear_bias_pong[ceildiv(MAX_LINEAR_OUT_DIM, LINEAR_OUT_SIZE)];
 
-extern wt_linear_block_t linear_weights_attn[4][ceildiv(QKV_LINEAR_DIM_PRODUCT, LINEAR_IN_SIZE *LINEAR_OUT_SIZE)];
-extern wt_bias_block_t linear_bias_attn[4][ceildiv(FEATURE_DIM, LINEAR_OUT_SIZE)];
+extern wt_linear_block_t linear_weights_attn[NUM_ATTN_LINEAR][ceildiv(QKV_LINEAR_DIM_PRODUCT, LINEAR_IN_SIZE *LINEAR_OUT_SIZE)];
+extern wt_bias_block_t linear_bias_attn[NUM_ATTN_LINEAR][ceildiv(FEATURE_DIM, LINEAR_OUT_SIZE)];
 
 
 
