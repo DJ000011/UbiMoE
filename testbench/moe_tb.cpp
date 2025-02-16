@@ -458,6 +458,7 @@ int main(int argc, char** argv) {
 
     cout<< "start setarg"<< endl;
     {
+    //For different top function, We set same buffer for input and output,for example, x_norm2Buffer and finalBuffer
     OCL_CHECK(err, err = embed.setArg(0, 1));
     OCL_CHECK(err, err = embed.setArg(1, imagesBuffer));
     OCL_CHECK(err, err = embed.setArg(2, finalBuffer));
