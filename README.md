@@ -1,8 +1,9 @@
 # UbiMoE: a Ubiquitous Mixture-of-Experts Vision Transformer Accelerator with Hybrid Computation Pattern on FPGA
 
 ## Environment
-- Ubuntu 20.04
+- **Ubuntu 20.04**
 - **Vitis**, **XRT** (Xilinx Runtime) and **XCU280 platform** 2022.1 [link](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/alveo/u280.html) 
+- **Model and Dataset** : We use the [$M^3ViT$](https://github.com/VITA-Group/M3ViT) as our model and evaluate on [Cityscape Dataset](https://www.cityscapes-dataset.com/)
 
 ## Overview
 ![UbiMoE Overall architecture](images/overall.png)
@@ -12,6 +13,7 @@ This repository contains the Xilinx HLS (High Level Synthesis) implementation fo
 Inspired by the Computation Reordering method in [$M^3ViT$](https://github.com/VITA-Group/M3ViT), UbiMoE focuses on the differing memory access requirements of the attention and FFN components in MoE-ViT to achieve a trade-off between resource utilization and performance. 
 
 In practice, we implement a fully streaming attention kernel optimized for latency and a reusable linear kernel optimized for resource efficiency. Since all the cores are parameterized, they can be easily adapted to different FPGAs.
+
 
 ## Compile and Run
 The following steps we use are based on the *Xilinx Vitis Unified IDE*. If needed, the official guidance can be found [here](https://docs.amd.com/r/2022.1-English/ug1393-vitis-application-acceleration/Using-the-Vitis-IDE).
@@ -41,3 +43,4 @@ Using `HW` target to bulid the final project. After compiling, In the `HW` direc
 ```shell
 ./executable you_project.xclbin
 ```
+
