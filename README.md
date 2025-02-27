@@ -44,3 +44,17 @@ Using `HW` target to bulid the final project. After compiling, In the `HW` direc
 ./executable you_project.xclbin
 ```
 
+## Citation
+
+We appreciate it if you would please cite the following paper if you found the implementation useful for your work:
+
+```bash
+@inproceedings{dong2025ubimoe,
+  title={UbiMoE: A Ubiquitous Mixture-of-Experts Vision Transformer Accelerator With Hybrid Computation Pattern on FPGA},
+  author={Dong, Jiale and Lou, Wenqi and Zheng, Zhendong and Qin, Yunji and Gong, Lei and Wang, Chao and Zhou, Xuehai},
+  booktitle={2025 IEEE International Symposium on Circuits and Systems (ISCAS)},
+  pages={1--5},
+  year={2025},
+  organization={IEEE}
+}
+```
