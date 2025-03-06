@@ -354,6 +354,7 @@ void read_in_RR(
 
     constexpr unsigned int num_blocks = LINEAR_IN_SIZE / FEATURE_BLOCK_SIZE;
     unsigned int row_length = ceildiv(in_dim, FEATURE_BLOCK_SIZE);
+    unsigned int real_length = ceildiv(length, NUM_PE);
     fm_block_t blocks[NUM_PE][num_blocks];
     unsigned int address[NUM_PE];
     linear_in_parallel_t stream_block;
@@ -367,7 +368,7 @@ void read_in_RR(
     unsigned int next_patch_base = 0;
     unsigned int next_dim_block = 0;
 
-    unsigned int iters = length * row_length;
+    unsigned int iters = real_length * row_length * NUM_PE;
     FOR_EACH(i, iters)
     {
 #pragma HLS pipeline
@@ -540,9 +541,9 @@ void write_out_RR(
     fm_t score[NUM_PE];
 #pragma HLS array_partition variable = blocks complete
 
+    unsigned int real_length = ceildiv(length, NUM_PE);
     unsigned int row_length = ceildiv(out_dim, FEATURE_BLOCK_SIZE);
-    unsigned int iters = length * row_length;
-
+    
     unsigned int overflow_idx = (NUM_PATCHES + 1) * row_length;
 
     constexpr unsigned int last_block = num_blocks - 1;
@@ -551,7 +552,7 @@ void write_out_RR(
     unsigned int next_idx = 0;
     unsigned int next_dim_block = 0;
 
-
+    unsigned int iters = real_length * row_length * NUM_PE;
 
     FOR_EACH(i, iters)
     {
@@ -627,7 +628,7 @@ void compute_linear(
     hls::stream<linear_out_parallel_t> out_stream;
 	#pragma HLS stream variable=out_stream depth=(MAX_LINEAR_OUT_DIM / LINEAR_OUT_SIZE)
     hls::stream<unsigned int> index_stream;
-	#pragma HLS stream variable=index_stream depth= 2 * NUM_PE
+	#pragma HLS stream variable=index_stream depth=(2 * NUM_PE)
 
     unsigned int length = (use_expert) ? expert_queue_lens[expert] : NUM_PATCHES;
     read_in_RR(in_stream, index_stream, src, in_dim, expert, length,use_expert);
